@@ -1,0 +1,6 @@
+Port 2222
+AuthorizedKeysFile none
+TrustedUserCAKeys /etc/ssh/user_ca.pub
+PermitRootLogin no
+PasswordAuthentication no
+ChallengeResponseAuthentication no

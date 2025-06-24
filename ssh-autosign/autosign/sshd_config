@@ -1,0 +1,8 @@
+Port 2222
+PermitRootLogin no
+PasswordAuthentication no
+ChallengeResponseAuthentication yes
+PubkeyAuthentication yes
+UsePAM yes
+AuthenticationMethods keyboard-interactive,publickey
+AuthorizedKeysFile .ssh/authorized_keys

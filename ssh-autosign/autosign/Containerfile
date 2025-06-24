@@ -1,0 +1,23 @@
+FROM docker.io/library/ubuntu:24.04
+
+RUN apt-get update && \
+    apt-get install -y openssh-server libpam-google-authenticator && \
+    mkdir /var/run/sshd
+
+RUN sed -i '2iauth required pam_google_authenticator.so nullok' /etc/pam.d/sshd && \
+    echo "auth    required                        pam_permit.so" > /etc/pam.d/common-auth && \
+    useradd -m enriquez && \
+    mkdir -p /home/enriquez/.ssh/ && \
+    chown enriquez:enriquez /home/enriquez/.ssh/
+
+ADD sshd_config /etc/ssh/
+ADD id_rsa.pub /home/enriquez/.ssh/authorized_keys
+ADD fake_shell.sh /usr/local/bin
+
+RUN chown enriquez:enriquez /home/enriquez/.ssh/authorized_keys && \
+    chmod go-rwx /home/enriquez/.ssh/authorized_keys && \
+    chmod a+rx /usr/local/bin/fake_shell.sh && \
+    chsh -s /usr/local/bin/fake_shell.sh enriquez && \
+    chmod -x /etc/update-motd.d/*
+
+ENTRYPOINT ["/usr/sbin/sshd", "-D", "-e"]
