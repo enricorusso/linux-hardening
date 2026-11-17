@@ -1,0 +1,78 @@
+name: Ubuntu 26.04 lab
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "ubuntu2604/**"
+      - ".github/workflows/ubuntu2604.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/enricorusso/linux-hardening
+  ROOTFS: ubuntu-26.04-server-cloudimg-amd64-root.tar.xz
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Download and verify official rootfs
+        working-directory: ubuntu2604
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE=https://cloud-images.ubuntu.com/releases/resolute/release
+
+          curl --fail --location --retry 3 \
+            "$BASE/$ROOTFS" \
+            --output "$ROOTFS"
+
+          curl --fail --location --retry 3 \
+            "$BASE/SHA256SUMS" \
+            --output SHA256SUMS
+
+          # Verify the downloaded archive against Ubuntu's checksums.
+          sha256sum --check --ignore-missing SHA256SUMS
+
+      - name: Build image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker build \
+            --file ubuntu2604/Containerfile \
+            --label org.opencontainers.image.source=https://github.com/enricorusso/linux-hardening \
+            --tag "$IMAGE:ubuntu26.04" \
+            --tag "$IMAGE:sha-${{ github.sha }}" \
+            ubuntu2604
+
+      - name: Log in to GitHub Container Registry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          printf '%s' "$GH_TOKEN" |
+            docker login ghcr.io \
+              --username "${{ github.actor }}" \
+              --password-stdin
+
+      - name: Push image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Publish both the rolling tag and the commit-specific tag.
+          docker push "$IMAGE:ubuntu26.04"
+          docker push "$IMAGE:sha-${{ github.sha }}"
