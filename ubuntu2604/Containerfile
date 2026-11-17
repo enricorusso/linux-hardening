@@ -1,0 +1,61 @@
+FROM scratch
+
+ADD ubuntu-26.04-server-cloudimg-amd64-root.tar.xz /
+
+ENV container=podman
+
+RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
+    && chmod 755 /usr/sbin/policy-rc.d
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+       sudo openssh-server \
+       vim-tiny less man-db bash-completion \
+       iproute2 iputils-ping dnsutils curl \
+       procps \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /usr/sbin/policy-rc.d
+
+RUN systemctl --root=/ disable systemd-networkd-wait-online.service \
+    && systemctl --root=/ mask systemd-networkd-wait-online.service \
+    && systemctl --root=/ set-default multi-user.target \
+    && systemctl --root=/ mask tpm-udev.path tpm-udev.service \
+    && cp -a /etc/fstab /etc/fstab.cloud-original \
+    && printf '# Root filesystem managed by Podman\n' > /etc/fstab \
+    && ln -sf /dev/null /etc/modules-load.d/fwupd-i2c.conf \
+    && ln -sf /dev/null /etc/modules-load.d/fwupd-msr.conf \
+    && touch /etc/cloud/cloud-init.disabled
+
+RUN mkdir -p /etc/systemd/system/sshd-keygen.service.d \
+    && printf '[Unit]\nConditionFirstBoot=\n' \
+       > /etc/systemd/system/sshd-keygen.service.d/container.conf
+
+RUN systemctl --root=/ disable \
+        apt-daily.timer \
+        apt-daily-upgrade.timer \
+        unattended-upgrades.service \
+    && systemctl --root=/ mask \
+        apt-daily.service \
+        apt-daily-upgrade.service \
+        unattended-upgrades.service
+
+ARG USER_PASSWORD=user
+
+RUN useradd --create-home --shell /bin/bash user \
+    && printf 'user:%s\n' "$USER_PASSWORD" | chpasswd \
+    && usermod -aG sudo user
+
+RUN mkdir -p /etc/ssh/sshd_config.d \
+    && printf 'PasswordAuthentication yes\n' \
+       > /etc/ssh/sshd_config.d/00-lab-auth.conf
+
+RUN truncate -s 0 /etc/machine-id \
+    && rm -f /var/lib/dbus/machine-id \
+             /var/lib/systemd/random-seed \
+    && rm -f /etc/ssh/ssh_host_* \
+    && find /var/log -type f -exec truncate -s 0 {} +
+
+STOPSIGNAL SIGRTMIN+3
+
+CMD ["/sbin/init"]
