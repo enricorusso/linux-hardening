@@ -6,7 +6,7 @@ run:
 	 --hostname hardlab \
 	 --systemd=always \
 	 --privileged \
-	 linux-hardening-lab:26.04 \
+	 ghcr.io/enricorusso/linux-hardening:ubuntu26.04 \
 	 /sbin/init
 
 build:
