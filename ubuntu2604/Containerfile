@@ -40,6 +40,9 @@ RUN systemctl --root=/ disable \
         apt-daily-upgrade.service \
         unattended-upgrades.service
 
+RUN printf 'f /run/utmp 0664 root utmp -\n' \
+    > /etc/tmpfiles.d/lab-utmp.conf
+
 ARG USER_PASSWORD=user
 
 RUN useradd --create-home --shell /bin/bash user \

@@ -1,0 +1,85 @@
+name: Build and publish tlog-web
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Upstream Git commit or tag"
+        required: true
+        default: "main"
+  push:
+    branches:
+      - main
+    paths:
+      - "tlog-web/Containerfile"
+      - ".github/workflows/tlog-web.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/enricorusso/tlog-web
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Resolve upstream revision
+        env:
+          UPSTREAM_REF: ${{ inputs.upstream_ref || 'main' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Resolve the requested revision to an exact commit.
+          git clone https://github.com/min-organization/tlog-web.git \
+            "$RUNNER_TEMP/tlog-web-upstream"
+
+          git -C "$RUNNER_TEMP/tlog-web-upstream" \
+            checkout --detach "$UPSTREAM_REF"
+
+          UPSTREAM_COMMIT=$(git -C "$RUNNER_TEMP/tlog-web-upstream" \
+            rev-parse HEAD)
+
+          echo "UPSTREAM_COMMIT=$UPSTREAM_COMMIT" >> "$GITHUB_ENV"
+          echo "Upstream commit: $UPSTREAM_COMMIT"
+
+      - name: Build image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker build \
+            --file tlog-web/Containerfile \
+            --build-arg TLOG_WEB_REF="$UPSTREAM_COMMIT" \
+            --label org.opencontainers.image.source=https://github.com/enricorusso/linux-hardening \
+            --label org.opencontainers.image.revision="${{ github.sha }}" \
+            --label org.opencontainers.image.description="Web viewer for tlog recordings" \
+            --tag "$IMAGE:latest" \
+            --tag "$IMAGE:build-${{ github.run_id }}-${{ github.run_attempt }}" \
+            tlog-web
+
+      - name: Log in to GitHub Container Registry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          printf '%s' "$GH_TOKEN" |
+            docker login ghcr.io \
+              --username "${{ github.actor }}" \
+              --password-stdin
+
+      - name: Push image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:build-${{ github.run_id }}-${{ github.run_attempt }}"

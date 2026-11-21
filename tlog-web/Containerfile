@@ -1,0 +1,51 @@
+FROM docker.io/alpine/git AS source
+
+ARG TLOG_WEB_REF=main
+
+RUN git clone https://github.com/min-organization/tlog-web.git /src \
+    && cd /src \
+    && git checkout "$TLOG_WEB_REF"
+
+FROM docker.io/library/node:22-alpine AS frontend
+WORKDIR /fe
+
+COPY --from=source /src/frontend/ ./
+
+RUN npm install --legacy-peer-deps \
+        --registry=https://registry.npmjs.org \
+    && npm run build
+
+FROM docker.io/library/golang:1.23 AS builder
+
+ENV CGO_ENABLED=0 \
+    GOOS=linux \
+    GOPROXY=https://proxy.golang.org,direct
+
+WORKDIR /app
+
+COPY --from=source /src/backend/ ./backend/
+COPY --from=frontend /fe/dist ./backend/frontend/dist
+
+RUN cd backend \
+    && go mod tidy \
+    && go build -ldflags="-s -w" -o /tlog-web-server .
+
+FROM docker.io/library/alpine:3.20
+
+RUN apk add --no-cache ca-certificates \
+    && mkdir -p /data /var/log/tlog
+
+WORKDIR /
+
+COPY --from=builder /tlog-web-server /tlog-web-server
+
+ENV HTTP_ADDR=0.0.0.0:8080 \
+    LOG_DIR=/var/log/tlog \
+    LOG_FILE=tlog-session.log \
+    DB_PATH=/data/tlog.db \
+    STATE_PATH=/data/collector.state \
+    REC_DIR=/data/recordings
+
+EXPOSE 8080
+
+CMD ["/tlog-web-server"]
